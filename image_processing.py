@@ -8,8 +8,9 @@ import time
 import glob
 import random
 import cloudmetrics
-import pandas as pd
 import csv
+from PIL import Image
+from torchvision import transforms
 
 #------Faster function for calculation relabeling costs of all orientations-------------------------------------------------
 @njit(fastmath=True)
@@ -127,7 +128,8 @@ def plot_clustering(images, cluster, sample_size, k_start, k_end, name, color1, 
             sample_list = rand.sample(index_list, sample_size)                                      # Else take a random sample of # sample_size indices
         for sample_counter in range(len(sample_list)):
             fig.add_subplot(k, sample_size, row_counter * sample_size + column_counter + 1)         # Add samples of cluster to subplot
-            plt.imshow(images[sample_list[sample_counter]], cmap=custom_cmap, vmin=0, vmax=1)       # Adding vmin and vmax --> Completly cloudy images get color of vmax (without vmin and vmax they got the same color as zeros in mixed images)
+            # plt.imshow(images[sample_list[sample_counter]], cmap=custom_cmap, vmin=0, vmax=1)       # Adding vmin and vmax --> Completly cloudy images get color of vmax (without vmin and vmax they got the same color as zeros in mixed images)
+            plt.imshow(images[sample_list[sample_counter]],cmap='hot')                              # Test for COD Clustering
             plt.axis('off')
             column_counter += 1
         row_counter += 1
@@ -151,13 +153,14 @@ def wasserstein_dist(distr1, distr2, CM):
 
 
 #------Image Clustering based on a k-median Clustering----------------------------------------------------------------------
-def d2_images(k1, distributions, CM, stop):
+def d2_images(k1, distributions, CM, stop): 
     cluster = np.zeros(len(distributions)).astype(int)
     ic_dist = np.zeros(k1)
     CCM = np.zeros((k1,k1))
     check = False
     while check == False:
         check = True
+        print('check')
         start = rand.sample(range(len(distributions)), k1)
         for i in range(len(start)):
             for j in range(i + 1, len(start)):
@@ -260,22 +263,45 @@ def compute_cloudmetrics(sample, images, cluster_images, name):
 
 
 
-# ------CMASK Testing-------------------------------------------------------------------------------------------------------
-def cmask_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, steps_patches):
+# ------CMASK Clustering----------------------------------------------------------------------------------------------------
+def cmask_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize):
     filenames = glob.glob("/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/data/cmask/germany_cmask_128x128_npy/*.npy")
     filenames.sort()
     sample = random.sample(filenames, sample_size)
     images = [np.load(arr).astype(int) for arr in sample]
     for i in patchsize:
         for j in k_patches:
-            for m in steps_patches[patchsize.index(i)]:
+            for m in stepsize[patchsize.index(i)]:
                 patches = []
                 for l in images:
                     patches.append(get_patches(l,i,m))
-                name = 'k_images' + str(k_images) + '_k_patches' + str(j) + '_patchsize' + str(i) + '_steps_patches' + str(m)
+                name = 'k_images' + str(k_images) + '_k_patches' + str(j) + '_patchsize' + str(i) + '_stepsize' + str(m)
                 heads_CM, distributions, cluster_patches = gonzalez_patches(patches, j)
                 cluster_images, center_images = d2_images(k_images,distributions,heads_CM,d2_stop)
                 plot_clustering(images, cluster_images, 30, 0, k_images, "D2_" + name, 'navy', 'whitesmoke')
                 compute_cloudmetrics(sample, images, cluster_images, name)
 
-        
+
+# ------Cloud Optical Depth Clustering--------------------------------------------------------------------------------------
+def cod_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize):
+    filenames = glob.glob("/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/data/cloud_optical_depth/gscale_128/random_crops/1/*.jpeg")
+    filenames.sort()
+    sample = random.sample(filenames, sample_size)
+    # images = [image.imread(sample_image) for sample_image in sample]  
+    images = [Image.open(sample_image) for sample_image in sample]
+    # transform_norm = transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.0112, 0.0770)])   # https://www.geeksforgeeks.org/how-to-normalize-images-in-pytorch/ --> mean and std calculated from DC for dataset
+    # data = [np.array(transform_norm(image)) for image in images]
+    # print(data[0])
+    print(images[0])
+    # for i in patchsize:
+    #     for j in k_patches:
+    #         for m in stepsize[patchsize.index(i)]:
+    #             patches = []
+    #             for l in data:
+    #                 patches.append(get_patches(l,i,m))
+    #             name = 'COD_k_images' + str(k_images) + '_k_patches' + str(j) + '_patchsize' + str(i) + '_stepsize' + str(m)
+    #             heads_CM, distributions, cluster_patches = gonzalez_patches(patches, j)
+    #             cluster_images, center_images = d2_images(k_images,distributions,heads_CM,d2_stop)
+    #             plot_clustering(images, cluster_images, 30, 0, k_images, "D2_" + name, 'navy', 'whitesmoke')
+    #             compute_cloudmetrics(sample, images, cluster_images, name)
+
