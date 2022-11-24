@@ -1,22 +1,30 @@
 import image_processing as ip
 import analysis as ana
+import numpy as np
 
-sample_size = 100
-k_images = 8
-d2_stop = 20
-k_patches = [100]
+sample_size = 1000
+k_images = 14
+d2_stop = 10
+k_patches = [500]
 patchsize = [8]
 stepsize = [[1]]
-path_csv_folder = "/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/cmask_clustering_results/csv/"
-path_csv_single = "/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/cmask_clustering_results/csv/05_D2_metrics_k_images8_k_patches100_patchsize8_steps_patches4.csv"
+path_csv_folder = "/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/clustering_results/cod/csv"
+path_csv_single = "/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/COD_metrics_sample_size10000_k_images7_k_patches500_patchsize8_stepsize1.csv"
+path_csv_single_test = "/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/COD_metrics_sample_size1000_k_images14_k_patches500_patchsize8_stepsize1.csv"
 
 def main():
-    # ip.cmask_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize)
-    ip.cod_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize)
+    # ip.cmask_clustering_fast(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize)
+    # ip.cod_clustering_fast(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize)
     # ana.plot_from_csv(path_csv_single)
     # ana.plot_all(path_csv_folder)
     # ana.nof(path_csv_folder)
-    
+    # ana.boxplots_cloud_fraction(path_csv_single)
+    # ana.boxplots_osmean(path_csv_single)
+    # ana.boxplots_meanls(path_csv_single)
+    # ana.boxplots_orientation(path_csv_single)
+    # ana.boxplots_iorg(path_csv_single)
+    # ana.boxplots_cod(path_csv_single)
+    ana.plot_clustering_csv(path_csv_single_test, 'Spectral_r', 'cod')
 
 # Run main
 if __name__ == "__main__":
