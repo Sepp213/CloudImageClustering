@@ -36,31 +36,47 @@ def relabeling_costs_numba(patch1, patch2):
 # ------Compute relabeling cost of one all patch alignments without numba---------------------------------------------------
 # Method 1 for approximating GED.
 def Delta_numpy(patch1, patch2):
-    ub = []
-    ub.append(relabeling_costs(patch1, patch2))
-    ub.append(relabeling_costs(np.flipud(patch1), patch2))
-    ub.append(relabeling_costs(np.rot90(patch1, 1), patch2))
-    ub.append(relabeling_costs(np.flipud(np.rot90(patch1, 1)), patch2))
-    ub.append(relabeling_costs(np.rot90(patch1, 2), patch2))
-    ub.append(relabeling_costs(np.flipud(np.rot90(patch1, 2)), patch2))
-    ub.append(relabeling_costs(np.rot90(patch1, 3), patch2))
-    ub.append(relabeling_costs(np.flipud(np.rot90(patch1, 3)), patch2))
-    return min(ub)
+    d = []
+    # default
+    d.append(relabeling_costs(patch1, patch2))
+    # default flipped
+    d.append(relabeling_costs(np.flipud(patch1), patch2))
+    # rot 90
+    d.append(relabeling_costs(np.rot90(patch1, 1), patch2))
+    # rot 90 flipped
+    d.append(relabeling_costs(np.flipud(np.rot90(patch1, 1)), patch2))
+    # rot 180
+    d.append(relabeling_costs(np.rot90(patch1, 2), patch2))
+    # rot 180 flipped
+    d.append(relabeling_costs(np.flipud(np.rot90(patch1, 2)), patch2))
+    # rot 270
+    d.append(relabeling_costs(np.rot90(patch1, 3), patch2))
+    # rot 270 flipped
+    d.append(relabeling_costs(np.flipud(np.rot90(patch1, 3)), patch2))
+    return min(d)
 
 
 
 # ------Compute relabeling cost of one all patch alignments with numba------------------------------------------------------
 def Delta_numpy_numba(patch1, patch2):
-    ub = []
-    ub.append(relabeling_costs_numba(patch1, patch2))
-    ub.append(relabeling_costs_numba(np.flipud(patch1), patch2))
-    ub.append(relabeling_costs_numba(np.rot90(patch1, 1), patch2))
-    ub.append(relabeling_costs_numba(np.flipud(np.rot90(patch1, 1)), patch2))
-    ub.append(relabeling_costs_numba(np.rot90(patch1, 2), patch2))
-    ub.append(relabeling_costs_numba(np.flipud(np.rot90(patch1, 2)), patch2))
-    ub.append(relabeling_costs_numba(np.rot90(patch1, 3), patch2))
-    ub.append(relabeling_costs_numba(np.flipud(np.rot90(patch1, 3)), patch2))
-    return min(ub)
+    d = []
+    # default
+    d.append(relabeling_costs_numba(patch1, patch2))
+    # default flipped
+    d.append(relabeling_costs_numba(np.flipud(patch1), patch2))
+    # rot 90
+    d.append(relabeling_costs_numba(np.rot90(patch1, 1), patch2))
+    # rot 90 flipped
+    d.append(relabeling_costs_numba(np.flipud(np.rot90(patch1, 1)), patch2))
+    # rot 180
+    d.append(relabeling_costs_numba(np.rot90(patch1, 2), patch2))
+    # rot 180 flipped
+    d.append(relabeling_costs_numba(np.flipud(np.rot90(patch1, 2)), patch2))
+    # rot 270
+    d.append(relabeling_costs_numba(np.rot90(patch1, 3), patch2))
+    # rot 270 flipped
+    d.append(relabeling_costs_numba(np.flipud(np.rot90(patch1, 3)), patch2))
+    return min(d)
 
 
 patches_source = []
@@ -89,7 +105,7 @@ print()
 time_start = time.time()
 tmp = 0
 for p1, p2 in zip(patches_source, patches_target):
-    tmp += ip.app_ged(p1,p2)
+    tmp += ip.Delta_final(p1,p2)
 time_end = time.time()
 print('Delta_final: Total APED = ' + str(tmp) + ' computed in ' + str(time_end - time_start) + 's.')
 print()

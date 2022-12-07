@@ -517,13 +517,15 @@ def plot_clustering_csv(path, cmap, image_type):
             if image_type == 'cod':
                 plt.imshow(Image.open(filenames[sample_list[sample_counter]]),cmap=cmap)
             elif image_type == 'cm':  
-                plt.imshow(np.load(filenames[sample_list[sample_counter]]),cmap=cmap, vmin=0, vmax=1)                          
+                plt.imshow(np.load(filenames[sample_list[sample_counter]]),cmap=cmap, vmin=0, vmax=1)      
+            elif image_type == 'cot':
+                plt.imshow(np.load(filenames[sample_list[sample_counter]]), cmap=cmap, vmin=0, vmax=150)                    
             plt.axis('off')
             column_counter += 1
         row_counter += 1
         column_counter = 0
     plt.subplots_adjust(0,0,1,1,0.1,0.1)
-    plt.savefig("TEST_CSV.png", dpi=1)
+    plt.savefig("TEST_CSV1.png", dpi=1)
     print('Plot saved.')
     print('----------------------------------------------------------------------------------------------------')
     print()
@@ -541,10 +543,14 @@ def plot_clustering_csv2(path, cmap, image_type):
     column_counter = 0
     filenames = df.path
     images = []
-    for i in filenames: 
-        img_tmp = Image.open(i)
-        images.append(np.log(np.array(img_tmp) + 1)) 
-        img_tmp.close()   
+    if image_type == 'cod':
+        for i in filenames: 
+            img_tmp = Image.open(i)
+            images.append(np.log(np.array(img_tmp) + 1)) 
+            img_tmp.close() 
+    else:
+        for i in filenames:#
+            images.append(np.log(np.load(i) + 1))  
     glob_max = []
     glob_min = []
     for img in images:
@@ -559,13 +565,13 @@ def plot_clustering_csv2(path, cmap, image_type):
         sample_list = rand.sample(tmp_list, min(columns, len(tmp_list)))                                      
         for sample_counter in range(len(sample_list)):
             ax = fig.add_subplot(rows, columns, row_counter * columns + column_counter + 1)
-            plt.imshow(images_norm2_reduced[sample_list[sample_counter]],cmap=cmap, vmin=0, vmax=1)                          
+            plt.imshow(images_norm2_reduced[sample_list[sample_counter]],cmap=cmap, vmin=0, vmax=1)                         
             plt.axis('off')
             column_counter += 1
         row_counter += 1
         column_counter = 0
     plt.subplots_adjust(0,0,1,1,0.1,0.1)
-    plt.savefig("TEST_CSV.png")
+    plt.savefig("TEST_CSV2.png", dpi=1)
     print('Plot saved.')
     print('----------------------------------------------------------------------------------------------------')
     print()
@@ -575,22 +581,33 @@ def plot_images_treshs(images, images_norm):
     print('----------------------------------------------------------------------------------------------------')
     print('Creating plot.')
     rows = len(images)                                                                                        
-    treshs = [0.5, 0.1, 0.01, 0.001]
+    treshs = [0.4, 0.3, 0.2, 0.1]
     columns = len(treshs) + 2
-    row_counter = 0     
     images_treshs = []
     for image, image_norm in zip(images, images_norm):
         images_treshs.append(image)
         images_treshs.append(image_norm)
         for tresh in treshs:
-            images_treshs.append(np.where(image > tresh, 0, 1))
+            images_treshs.append(np.where(image_norm > tresh, 1, 0))
     fig = plt.figure(figsize=(rows * 16, columns * 16))
     grid = ImageGrid(fig, 111, nrows_ncols=(rows, columns), axes_pad=0.1)
+    counter = 1
     for img, ax in zip(images_treshs, grid):
-        ax.imshow(img, cmap='Spectral')
+        if counter == 1:
+            ax.imshow(img, cmap='Spectral', vmin=0, vmax=150)
+            counter += 1
+        else:
+            ax.imshow(img, cmap='Spectral', vmin=0, vmax=1)
+            counter += 1
+        if counter == 7:
+            counter = 1
         plt.axis('off')
     plt.savefig("TEST_TRESHS.png")
     print('Plot saved.')
+    print(np.sum(images_treshs[2]))
+    print(np.sum(images_treshs[3]))
+    print(np.sum(images_treshs[4]))
+    print(np.sum(images_treshs[5]))
     print('----------------------------------------------------------------------------------------------------')
     print()
 
