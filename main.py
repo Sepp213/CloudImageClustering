@@ -21,10 +21,8 @@ def main():
     # ana.boxplots_iorg(path_cm_results_k7)
     # ana.boxplots_cod(path_cot_results)
     # ana.boxplots_maxls_meanls(path_cm_results_k7)
-    # ana.plot_clustering_csv(path_cm_results_k5, 'Spectral_r', 'cm', 5, 20)
     # ana.merge_physicals(path1, path2)
-    # ana.plot_cluster_range_csv2(path_cm_results_k7, 'Spectral_r', 7, 10, False, True)
-    # ana.plot_cod_distr(path_cot_results)
+    # ana.plot_cluster_range_csv(path_cm_results_k7, 'Spectral_r', 7, 10, False, True)
     # ana.plot_cod_distr(path_cot_results)
     ana.plot_cmap('Spectral_r')
 
