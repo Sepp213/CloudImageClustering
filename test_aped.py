@@ -79,6 +79,7 @@ def Delta_numpy_numba(patch1, patch2):
     return min(d)
 
 
+# ------TESTING-------------------------------------------------------------------------------------------------------------
 patches_source = []
 patches_target = []
 

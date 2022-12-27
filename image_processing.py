@@ -14,23 +14,32 @@ from torchvision import transforms
 from math import sqrt
 import analysis as ana
 
+
 #------Faster function for calculation relabeling costs of all orientations-------------------------------------------------
-@njit(fastmath=True)
-def app_ged(arr1,arr2):
+@njit
+def Delta_final(arr1,arr2):
     assert (len(arr1) == len(arr2)), "Dimensions of patches are not equal!"
     assert (len(arr1[0]) == len(arr2[0])), "Dimensions of patches are not equal!"
     dimension = len(arr1)
     distance = np.zeros(8)
     for row in range(dimension):
         for column in range(len(arr1[0])):
-            distance[0] += np.abs(arr1[row][column]-arr2[row][column])                            # default
-            distance[1] += np.abs(arr1[dimension-column-1][row]-arr2[row][column])                # rotate 90 left
-            distance[2] += np.abs(arr1[dimension-row-1][dimension-column-1]-arr2[row][column])    # rotate 180 left
-            distance[3] += np.abs(arr1[column][dimension-row-1]-arr2[row][column])                # rotate 270 left
-            distance[4] += np.abs(arr1[row][dimension-column-1]-arr2[row][column])                # default flipped
-            distance[5] += np.abs(arr1[dimension-column-1][dimension-row-1]-arr2[row][column])    # rotate 90 left and flipped
-            distance[6] += np.abs(arr1[dimension-row-1][column]-arr2[row][column])                # rotate 180 left and flipped
-            distance[7] += np.abs(arr1[column][row]-arr2[row][column])                            # rotate 270 left and flipped
+            #default 
+            distance[0] += np.abs(arr1[row][column]-arr2[row][column])  
+            # default flipped
+            distance[1] += np.abs(arr1[dimension-row-1][column]-arr2[row][column])
+            # rot 90
+            distance[2] += np.abs(arr1[column][dimension-row-1]-arr2[row][column]) 
+            # rot 90 flipped
+            distance[3] += np.abs(arr1[column][row]-arr2[row][column])
+            # rot 180
+            distance[4] += np.abs(arr1[dimension-row-1][dimension-column-1]-arr2[row][column])     
+            # rot 180 flipped
+            distance[5] += np.abs(arr1[row][dimension-column-1]-arr2[row][column])
+            # rot 270                
+            distance[6] += np.abs(arr1[dimension-column-1][row]-arr2[row][column])   
+            # rot 270 flipped                                               
+            distance[7] += np.abs(arr1[dimension-column-1][dimension-row-1]-arr2[row][column])                                               
     return np.min(distance)
 
 
@@ -113,7 +122,7 @@ def get_patches(image, patchsize, step_size):
 
 
 #------Patch Clustering to minimize intercluster distance with algorithm of Gonzalez----------------------------------------
-def gonzalez_patches(patches, k):                                               # patches --> List of list of arrays (in outer list is one list of arrays for each image), k --> # of patch cluster
+def gonzalez_patches(patches, k, eps):                                               # patches --> List of list of arrays (in outer list is one list of arrays for each image), k --> # of patch cluster
     heads = []                                                                  # List for cluster heads
     cluster = []                                                                # List for cluster IDs
     distributions = []                                                          # List for the distributions of all images --> How many patches of the image belong to which cluster
@@ -133,7 +142,7 @@ def gonzalez_patches(patches, k):                                               
     #for iteration in range(k-1):
     iteration = 0
     max_ic_dist = 64
-    while iteration < k-1 and max_ic_dist > 11:
+    while iteration < k-1 and max_ic_dist > eps:
         time_start = time.time()
         max_ic_dist = 0
         image_index = 0
@@ -141,7 +150,7 @@ def gonzalez_patches(patches, k):                                               
         if initial:
             for image_counter in range(len(patches)):
                 for patch_counter in range(len(patches[0])):
-                    dist_to_head[image_counter].append(app_ged(patches[image_counter][patch_counter],heads[0]))             # Initially compute the distances of eachs patch to it's head and store the distance in dist_to_head
+                    dist_to_head[image_counter].append(Delta_final(patches[image_counter][patch_counter],heads[0]))             # Initially compute the distances of eachs patch to it's head and store the distance in dist_to_head
                     initial = False
             for image_counter in range(len(patches)):
                 if max(dist_to_head[image_counter]) > max_ic_dist:                                                          # Find a image with larger intercluster distance
@@ -160,7 +169,7 @@ def gonzalez_patches(patches, k):                                               
         for image_counter in range(len(patches)):
             for patch_counter in range(len(patches[0])):                                                                    # The patches of each image need to be assigned to the new cluster if the distance to the new heads better
                 temp1 = dist_to_head[image_counter][patch_counter]
-                temp2 = app_ged(patches[image_counter][patch_counter],heads[iteration + 1])                                 # Compute distance to the new head
+                temp2 = Delta_final(patches[image_counter][patch_counter],heads[iteration + 1])                                 # Compute distance to the new head
                 if temp1 >= temp2:
                     distributions[image_counter][int(cluster[image_counter][patch_counter])] -= 1                           # Update distribution of the affected image
                     distributions[image_counter][iteration+1] += 1                                                          # Update distribution of the affected image
@@ -178,10 +187,10 @@ def gonzalez_patches(patches, k):                                               
     distributions_shortened = []
     for distribution in distributions:
         distributions_shortened.append(distribution[range(len(heads))])
-    heads_distance_matrix = np.zeros((len(heads),len(heads))).astype(int)                                                                     # Distance matrix for distances between heads
+    heads_distance_matrix = np.zeros((len(heads),len(heads))).astype(float)                                                                     # Distance matrix for distances between heads
     for row in range(len(heads)):
         for column in range(row+1,len(heads)):
-            heads_distance_matrix[row][column] = app_ged(heads[row],heads[column])                                          # Compute upper triangular matrix of distances between heads
+            heads_distance_matrix[row][column] = Delta_final(heads[row],heads[column])                                          # Compute upper triangular matrix of distances between heads
     heads_distance_matrix = heads_distance_matrix + np.transpose(heads_distance_matrix)                                     # Create symmetric distance matrix
     print('done.')
     print('----------------------------------------------------------------------------------------------------')
@@ -233,7 +242,12 @@ def wasserstein_dist(distr1, distr2, CM):
     return wd
 
 
-#------Image Clustering based on a k-median Clustering----------------------------------------------------------------------
+# ------Compute Wasserstein barycenter--------------------------------------------------------------------------------------
+def ws_barycenter(distributions, CM):
+    return ot.barycenter(distributions, CM, 1e-3, method='sinkhorn_stabilized') 
+
+
+#------Image Clustering based on a D2 Clustering----------------------------------------------------------------------------
 def d2_images(k1, distributions, CM, stop): 
     cluster = np.zeros(len(distributions)).astype(int)
     ic_dist = np.zeros(k1)
@@ -309,12 +323,12 @@ def d2_images(k1, distributions, CM, stop):
     return cluster, center
 
 
-#------Image Clustering based on a k-median Clustering----------------------------------------------------------------------
+#------Image Clustering based on a D2 Clustering----------------------------------------------------------------------------
 def d2_images_fast(k1, distributions, CM, stop):
     distributions_normalized = [] 
     for distr in distributions:
-        distr_sum = np.sum(distr)
-        # distributions_normalized.append(distr/distr_sum)
+        # distr_sum = np.sum(distr)
+        # distributions_normalized.append(distr/distr_sum)  --> Better results for unnormalized distributions!
         distributions_normalized.append(distr)
     cluster = np.zeros(len(distributions)).astype(int)
     CCM = np.zeros((k1,k1))
@@ -336,12 +350,12 @@ def d2_images_fast(k1, distributions, CM, stop):
     assert (check == True), "Initial centers with distance > 0 could not be selected!"
     print('----------------------------------------------------------------------------------------------------')
     print('Image Clustering running:')
-    bool_stop = True
+    move_counter = 10**4
     i = 0
     # for i in range(stop):
-    while i < stop and bool_stop:
+    while i < stop and move_counter > 0:
         time1 = time.time()
-        bool_stop = False
+        move_counter = 0
         for j in range(len(distributions)):
             initial = True
             temp1 = 0
@@ -357,7 +371,7 @@ def d2_images_fast(k1, distributions, CM, stop):
                         temp1 = temp2
                 initial = False
             if cluster_start != cluster[j]:
-                bool_stop = True
+                move_counter += 1
         time2 = time.time()
         print('Assignment to centroids done:\t' + str(time2 - time1) + '\ts.')
         time3 = time.time()
@@ -387,36 +401,38 @@ def d2_images_fast(k1, distributions, CM, stop):
 
 
 # ------Cloudmetrics Computation CMASK--------------------------------------------------------------------------------------
-def compute_cloudmetrics_cmask(sample, images, cluster_images, name):
+def compute_cloudmetrics_cmask(sample, images, cluster_images, center_images, name):
     print('----------------------------------------------------------------------------------------------------')
     print('Cloudmetrics Computation running.')
-    fieldnames = ['path', 'cluster', 'fraction', 'open sky mean', 'orientation', 'mean length scale', 'iOrg']
+    fieldnames = ['path', 'cluster', 'center', 'fraction', 'mean length scale', 'max length scale', 'iOrg']
     rows = []
+    counter = 0
+    tmp5 = -1
     for i,j,l in zip(sample, images, cluster_images):
+        for k in center_images:
+            if counter == k:
+                tmp5 = center_images.index(k)
         labels = cloudmetrics.objects.label(mask=j)
         try:
             tmp1 = cloudmetrics.mask.cloud_fraction(j)
         except:
             tmp1 = 0.0
-        try:
-            tmp2, tmp3 = cloudmetrics.mask.open_sky(j) 
+        try: 
+            tmp2 = cloudmetrics.objects.mean_length_scale(labels)
         except:
-            tmp2 = 0.0 
+            tmp2 = 0.0
+        try: 
+            tmp3 = cloudmetrics.objects.max_length_scale(labels)
+        except:
             tmp3 = 0.0
-        try: 
-            tmp4 = cloudmetrics.mask.orientation(j)
-        except: 
-            tmp4 = 0.0
-        try: 
-            tmp6 = cloudmetrics.objects.mean_length_scale(labels)
-        except:
-            tmp6 = 0.0
         try:
-            tmp7 = cloudmetrics.objects.metrics.iorg(labels)
+            tmp4 = cloudmetrics.objects.metrics.iorg(labels)
         except:
-            tmp7 = 0.0
-        row = {'path': i, 'cluster': l + 1, 'fraction': tmp1, 'open sky mean': tmp3, 'orientation': tmp4, 'mean length scale': tmp6, 'iOrg': tmp7}
+            tmp4 = 0.0
+        row = {'path': i, 'cluster': l + 1, 'center': tmp5 + 1, 'fraction': tmp1, 'mean length scale': tmp2, 'max length scale': tmp3, 'iOrg': tmp4}
         rows.append(row)
+        tmp5 = -1
+        counter += 1
     print('Cloudmetrics successfully computed.')
     print('----------------------------------------------------------------------------------------------------')
     print()
@@ -431,47 +447,44 @@ def compute_cloudmetrics_cmask(sample, images, cluster_images, name):
     print()
 
 
-# ------Compute Wasserstein barycenter--------------------------------------------------------------------------------------
-def ws_barycenter(distributions, CM):
-    return ot.barycenter(distributions, CM, 1e-3, method='sinkhorn_stabilized')
-
-
 # ------Cloudmetrics Computation COD----------------------------------------------------------------------------------------
-def compute_cloudmetrics_cod(sample, images, cluster_images, name, cod_tresh):
+def compute_cloudmetrics_cod(sample, images, cluster_images, center_images, name, cod_tresh):
     print('----------------------------------------------------------------------------------------------------')
     print('Cloudmetrics Computation running.')
-    fieldnames = ['path', 'cluster', 'fraction', 'open sky mean', 'orientation', 'mean length scale', 'iOrg', 'cod']
+    fieldnames = ['path', 'cluster', 'center', 'fraction', 'mean length scale', 'max length scale',  'iOrg', 'cod']
     rows = []
+    counter = 0
+    tmp6 = -1
     for i,j,l in zip(sample, images, cluster_images):
+        for k in center_images:
+            if counter == k:
+                tmp6 = center_images.index(k)
         codmask = np.where(np.array(j) >= cod_tresh, 1, 0)
         labels = cloudmetrics.objects.label(mask=codmask)
         try:
             tmp1 = cloudmetrics.mask.cloud_fraction(codmask)
         except:
             tmp1 = 0.0
-        try:
-            tmp2, tmp3 = cloudmetrics.mask.open_sky(codmask) 
-        except:
-            tmp2 = 0.0 
-            tmp3 = 0.0
         try: 
-            tmp4 = cloudmetrics.mask.orientation(codmask)
-        except: 
+            tmp2 = cloudmetrics.objects.mean_length_scale(labels)
+        except:
+            tmp2 = 0.0
+        try: 
+            tmp3 = cloudmetrics.objects.max_length_scale(labels)
+        except:
+            tmp3 = 0.0
+        try:
+            tmp4 = cloudmetrics.objects.metrics.iorg(labels)
+        except:
             tmp4 = 0.0
         try: 
-            tmp6 = cloudmetrics.objects.mean_length_scale(labels)
+            tmp5 = np.sum(j) / 128**2
         except:
-            tmp6 = 0.0
-        try:
-            tmp7 = cloudmetrics.objects.metrics.iorg(labels)
-        except:
-            tmp7 = 0.0
-        try: 
-            tmp9 = np.sum(j) / 128**2
-        except:
-            tmp9 = 0
-        row = {'path': i, 'cluster': l + 1, 'fraction': tmp1, 'open sky mean': tmp3, 'orientation': tmp4, 'mean length scale': tmp6, 'iOrg': tmp7, 'cod': tmp9}
+            tmp5 = 0
+        row = {'path': i, 'cluster': l + 1, 'center': tmp6 + 1, 'fraction': tmp1, 'mean length scale': tmp2, 'max length scale': tmp3, 'iOrg': tmp4, 'cod': tmp5}
         rows.append(row)
+        tmp6 = -1
+        counter += 1
     print('Cloudmetrics successfully computed.')
     print('----------------------------------------------------------------------------------------------------')
     print()
@@ -486,9 +499,61 @@ def compute_cloudmetrics_cod(sample, images, cluster_images, name, cod_tresh):
     print()
 
 
+# ------Cloudmetrics Computation COT----------------------------------------------------------------------------------------
+def compute_cloudmetrics_cot(sample, images, cluster_images, center_images, name, cod_tresh):
+    print('----------------------------------------------------------------------------------------------------')
+    print('Cloudmetrics Computation running.')
+    fieldnames = ['path', 'cluster', 'center', 'fraction', 'mean length scale', 'max length scale', 'iOrg', 'cot']
+    rows = []
+    counter = 0
+    tmp6 = -1
+    for i,j,l in zip(sample, images, cluster_images):
+        for k in center_images:
+            if counter == k:
+                tmp6 = center_images.index(k)
+        cotmask = np.where(np.array(j) > cod_tresh, 1, 0)
+        labels = cloudmetrics.objects.label(mask=cotmask)
+        try:
+            tmp1 = cloudmetrics.mask.cloud_fraction(cotmask)
+        except:
+            tmp1 = 0.0
+        try: 
+            tmp2 = cloudmetrics.objects.mean_length_scale(labels)
+        except:
+            tmp2 = 0.0
+        try: 
+            tmp3 = cloudmetrics.objects.max_length_scale(labels)
+        except:
+            tmp3 = 0.0
+        try:
+            tmp4 = cloudmetrics.objects.metrics.iorg(labels)
+        except:
+            tmp4 = 0.0
+        try: 
+            tmp5 = np.sum(j) / 128**2
+        except:
+            tmp5 = 0
+        row = {'path': i, 'cluster': l + 1, 'center': tmp6 + 1, 'fraction': tmp1, 'mean length scale': tmp2, 'max length scale': tmp3, 'iOrg': tmp4, 'cot': tmp5}
+        rows.append(row)
+        tmp6 = -1
+        counter += 1
+    print('Cloudmetrics successfully computed.')
+    print('----------------------------------------------------------------------------------------------------')
+    print()
+    print('----------------------------------------------------------------------------------------------------')
+    print('Writing results to csv.')
+    with open('COT_metrics_' + name + '.csv', 'w', encoding='UTF8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    print('File saved.')
+    print('----------------------------------------------------------------------------------------------------')
+    print()
+
+
 
 # ------CMASK Clustering----------------------------------------------------------------------------------------------------
-def cmask_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize):
+def cmask_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize, tresh_patch_dist):
     filenames = glob.glob("/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/data/cmask/germany_cmask_128x128_npy/*.npy")
     filenames.sort()
     sample = random.sample(filenames, sample_size)
@@ -501,11 +566,11 @@ def cmask_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, steps
                     patches.append(get_patches(l,i,m))
                 name = 'k_images' + str(k_images) + '_k_patches' + str(j) + '_patchsize' + str(i) + '_stepsize' + str(m)
                 time1 = time.time()
-                heads_CM, distributions, cluster_patches = gonzalez_patches(patches, j)
+                heads_CM, distributions, cluster_patches = gonzalez_patches(patches, j, tresh_patch_dist)
                 time2 = time.time()
                 cluster_images, center_images = d2_images(k_images,distributions,heads_CM,d2_stop)
                 time3 = time.time()
-                compute_cloudmetrics_cmask(sample, images, cluster_images, name)
+                compute_cloudmetrics_cmask(sample, images, cluster_images, center_images, name)
                 time4 = time.time()
                 print('Patch Clustering in ' + str(time2 - time1) + ' s.')
                 print('Image Clustering in ' + str(time3 - time2) + ' s.')
@@ -513,7 +578,7 @@ def cmask_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, steps
 
 
 # ------CMASK Clustering----------------------------------------------------------------------------------------------------
-def cmask_clustering_fast(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize):
+def cmask_clustering_fast(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize, tresh_patch_dist):
     filenames = glob.glob("/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/data/cmask/germany_cmask_128x128_npy/*.npy")
     filenames.sort()
     sample = random.sample(filenames, sample_size)
@@ -526,11 +591,11 @@ def cmask_clustering_fast(sample_size, k_images, d2_stop, k_patches, patchsize, 
                     patches.append(get_patches(l,i,m))
                 name = 'sample_size' + str(sample_size) + '_k_images' + str(k_images) + '_k_patches' + str(j) + '_patchsize' + str(i) + '_stepsize' + str(m)
                 time1 = time.time()
-                heads_CM, distributions, cluster_patches = gonzalez_patches(patches, j)
+                heads_CM, distributions, cluster_patches = gonzalez_patches(patches, j, tresh_patch_dist)
                 time2 = time.time()
                 cluster_images, center_images = d2_images_fast(k_images,distributions,heads_CM,d2_stop)
                 time3 = time.time()
-                compute_cloudmetrics_cmask(sample, images, cluster_images, name)
+                compute_cloudmetrics_cmask(sample, images, cluster_images, center_images, name)
                 time4 = time.time()
                 print('Patch Clustering in ' + str(time2 - time1) + ' s.')
                 print('Image Clustering in ' + str(time3 - time2) + ' s.')
@@ -540,7 +605,7 @@ def cmask_clustering_fast(sample_size, k_images, d2_stop, k_patches, patchsize, 
 
 
 # ------Cloud Optical Depth Clustering--------------------------------------------------------------------------------------
-def cod_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize):
+def cod_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize, tresh_patch_dist, tresh_cm_cod):
     filenames = glob.glob("/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/data/cloud_optical_depth/gscale_128/random_crops/1/*.jpeg")
     filenames.sort()
     sample = random.sample(filenames, sample_size)
@@ -615,11 +680,11 @@ def cod_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, stepsiz
                     patches.append(get_patches(l,i,m))
                 name = 'sample_size' + str(sample_size) +'_k_images' + str(k_images) + '_k_patches' + str(j) + '_patchsize' + str(i) + '_stepsize' + str(m)
                 time1 = time.time()
-                heads_CM, distributions, cluster_patches = gonzalez_patches(patches, j)
+                heads_CM, distributions, cluster_patches = gonzalez_patches(patches, j, tresh_patch_dist)
                 time2 = time.time()
                 cluster_images, center_images = d2_images(k_images,distributions,heads_CM,d2_stop)
                 time3 = time.time()
-                compute_cloudmetrics_cod(sample, images, cluster_images, name, 0.001)
+                compute_cloudmetrics_cod(sample, images, cluster_images, center_images, name, tresh_cm_cod)
                 time4 = time.time()
                 print('Patch Clustering in ' + str(time2 - time1) + ' s.')
                 print('Image Clustering in ' + str(time3 - time2) + ' s.')
@@ -628,7 +693,7 @@ def cod_clustering(sample_size, k_images, d2_stop, k_patches, patchsize, stepsiz
 
     
 # ------Cloud Optical Depth Clustering--------------------------------------------------------------------------------------
-def cod_clustering_fast(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize):
+def cod_clustering_fast(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize, tresh_patch_dist, tresh_cm_cod):
     filenames = glob.glob("/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/data/cloud_optical_depth/gscale_128/random_crops/1/*.jpeg")
     filenames.sort()
     sample = random.sample(filenames, sample_size)
@@ -715,11 +780,49 @@ def cod_clustering_fast(sample_size, k_images, d2_stop, k_patches, patchsize, st
                     patches.append(get_patches(l,i,m))
                 name = 'sample_size' + str(sample_size) +'_k_images' + str(k_images) + '_k_patches' + str(j) + '_patchsize' + str(i) + '_stepsize' + str(m)
                 time1 = time.time()
-                heads_CM, distributions, cluster_patches = gonzalez_patches(patches, j)
+                heads_CM, distributions, cluster_patches = gonzalez_patches(patches, j, tresh_patch_dist)
                 time2 = time.time()
                 cluster_images, center_images = d2_images_fast(k_images,distributions,heads_CM,d2_stop)
                 time3 = time.time()
-                compute_cloudmetrics_cod(sample, images, cluster_images, name, 0.001)
+                compute_cloudmetrics_cod(sample, images_norm2_reduced, cluster_images, center_images, name, tresh_cm_cod)
+                time4 = time.time()
+                print('Patch Clustering in ' + str(time2 - time1) + ' s.')
+                print('Image Clustering in ' + str(time3 - time2) + ' s.')
+                print('Computation of cloudmetrics in ' + str(time4 - time3) + ' s.')
+
+
+
+# ------COT Clustering------------------------------------------------------------------------------------------------------
+def cot_clustering_fast(sample_size, k_images, d2_stop, k_patches, patchsize, stepsize, tresh_patch_dist, tresh_cm_cot):
+    filenames = glob.glob("/Users/sz/Documents/Uni/Master/Masterarbeit/Masterarbeit_Projekt/ImageClusteringMain/data/cot/random_10k_cot/*.npy")
+    filenames.sort()
+    sample = random.sample(filenames, sample_size)
+    # images_original = []
+    # for img in sample:
+    #     images_original.append(np.load(img))
+    images_tmp = []
+    for img in sample:
+        images_tmp.append(np.log(np.load(img) + 1))
+    glob_min = []
+    glob_max = []
+    for img in images_tmp:
+        glob_min.append(np.amin(img))
+        glob_max.append(np.amax(img))
+    images = [np.divide(img, max(glob_max), dtype=float) for img in images_tmp]
+    # ana.plot_images_treshs(images_original, images)
+    for i in patchsize:
+        for j in k_patches:
+            for m in stepsize[patchsize.index(i)]:
+                patches = []
+                for l in images:
+                    patches.append(get_patches(l,i,m))
+                name = 'sample_size' + str(sample_size) + '_k_images' + str(k_images) + '_k_patches' + str(j) + '_patchsize' + str(i) + '_stepsize' + str(m)
+                time1 = time.time()
+                heads_CM, distributions, cluster_patches = gonzalez_patches(patches, j, tresh_patch_dist)
+                time2 = time.time()
+                cluster_images, center_images = d2_images_fast(k_images,distributions,heads_CM,d2_stop)
+                time3 = time.time()
+                compute_cloudmetrics_cot(sample, images, cluster_images, center_images, name, tresh_cm_cot)
                 time4 = time.time()
                 print('Patch Clustering in ' + str(time2 - time1) + ' s.')
                 print('Image Clustering in ' + str(time3 - time2) + ' s.')
